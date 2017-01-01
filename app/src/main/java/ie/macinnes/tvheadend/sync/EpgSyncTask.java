@@ -161,9 +161,9 @@ class EpgSyncTask extends MessageListener {
             mContentResolver.update(channelUri, values, null, null);
         }
 
-        if (message.getChannelIcon() != null) {
-            fetchChannelLogo(channelUri, message);
-        }
+//        if (message.getChannelIcon() != null) {
+//            fetchChannelLogo(channelUri, message);
+//        }
 
         mSeenChannels.add(message.getChannelId());
     }
