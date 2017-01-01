@@ -134,7 +134,7 @@ class EpgSyncTask extends MessageListener {
             handleChannel((BaseChannelResponse) message);
         } else if (message instanceof BaseEventResponse) {
             storeLastUpdate();
-            handleEvent((BaseEventResponse) message);
+            //handleEvent((BaseEventResponse) message);
         }
     }
 
