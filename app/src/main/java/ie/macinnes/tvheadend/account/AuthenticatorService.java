@@ -18,22 +18,25 @@ import android.accounts.Account;
 import android.accounts.AccountManager;
 import android.accounts.OnAccountsUpdateListener;
 import android.app.Service;
-import android.content.ContentResolver;
+import android.content.Context;
 import android.content.Intent;
-import android.os.Bundle;
+import android.content.SharedPreferences;
 import android.os.Handler;
 import android.os.IBinder;
 import android.util.Log;
 
 import ie.macinnes.tvheadend.Constants;
+import ie.macinnes.tvheadend.MiscUtils;
 import ie.macinnes.tvheadend.TvContractUtils;
-import ie.macinnes.tvheadend.sync.SyncUtils;
+import ie.macinnes.tvheadend.sync.EpgSyncService;
 
 public class AuthenticatorService extends Service {
     private static final String TAG = AuthenticatorService.class.getName();
 
     private AccountManager mAccountManager;
     private Account[] mCurrentAccounts;
+
+    protected SharedPreferences mSharedPreferences;
 
     private OnAccountsUpdateListener mAccountsUpdateListener = new OnAccountsUpdateListener() {
         @Override
@@ -55,11 +58,17 @@ public class AuthenticatorService extends Service {
                 if (!accountExists && currentAccount.type.equals(Constants.ACCOUNT_TYPE)) {
                     Log.d(TAG, "Account Removed: " + currentAccount.toString());
 
-                    // Remove the Periodic Sync (Is this necessary?)
-                    SyncUtils.removePeriodicSync(currentAccount);
+                    // Stop the EPG Sync Service
+                    getBaseContext().stopService(new Intent(getBaseContext(), EpgSyncService.class));
 
                     // Remove all the channels we added
                     TvContractUtils.removeChannels(getApplicationContext());
+
+                    // Indicate we've not completed the setup
+                    MiscUtils.setSetupComplete(getBaseContext(), false);
+
+                    // Discard the previously saved last EPG update stamp
+                    mSharedPreferences.edit().remove(Constants.KEY_EPG_LAST_UPDATE).apply();
                 }
             }
         }
@@ -68,8 +77,12 @@ public class AuthenticatorService extends Service {
     @Override
     public void onCreate() {
         mAccountManager = AccountManager.get(this);
-        mCurrentAccounts = mAccountManager.getAccountsByType(Constants.ACCOUNT_TYPE);
-        mAccountManager.addOnAccountsUpdatedListener(mAccountsUpdateListener, new Handler(), true);
+        mCurrentAccounts = AccountUtils.getAllAccounts(this);
+
+        mSharedPreferences = getBaseContext().getSharedPreferences(
+                Constants.PREFERENCE_TVHEADEND, Context.MODE_PRIVATE);
+
+        AccountUtils.addOnAccountsUpdatedListener(this, mAccountsUpdateListener, new Handler(), true);
     }
 
     @Override

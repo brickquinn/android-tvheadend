@@ -28,33 +28,21 @@ import android.text.TextUtils;
 import android.util.Log;
 import android.widget.Toast;
 
-import com.android.volley.AuthFailureError;
-import com.android.volley.NetworkError;
-import com.android.volley.NoConnectionError;
-import com.android.volley.ParseError;
-import com.android.volley.Response;
-import com.android.volley.ServerError;
-import com.android.volley.TimeoutError;
-import com.android.volley.VolleyError;
-
-import org.json.JSONObject;
-
 import java.util.List;
 
+import ie.macinnes.htsp.Connection;
+import ie.macinnes.htsp.ConnectionListener;
+import ie.macinnes.tvheadend.BuildConfig;
 import ie.macinnes.tvheadend.Constants;
 import ie.macinnes.tvheadend.R;
-import ie.macinnes.tvheadend.client.TVHClient;
 import ie.macinnes.tvheadend.migrate.MigrateUtils;
 
 public class AuthenticatorActivity extends AccountAuthenticatorActivity {
-    private static final String TAG = TVHClient.class.getName();
+    private static final String TAG = AuthenticatorActivity.class.getName();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
-        // TODO: Find a better (+ out of UI thread) way to do this.
-        MigrateUtils.doMigrate(getBaseContext());
 
         GuidedStepFragment fragment = new ServerFragment();
         fragment.setArguments(getIntent().getExtras());
@@ -93,9 +81,10 @@ public class AuthenticatorActivity extends AccountAuthenticatorActivity {
 
     public static class ServerFragment extends BaseGuidedStepFragment {
         private static final int ACTION_ID_HOSTNAME = 1;
-        private static final int ACTION_ID_HTTP_PORT = 2;
-        private static final int ACTION_ID_HTTP_PATH = 3;
-        private static final int ACTION_ID_NEXT = 4;
+        private static final int ACTION_ID_HTSP_PORT = 2;
+        private static final int ACTION_ID_HTTP_PORT = 3;
+        private static final int ACTION_ID_HTTP_PATH = 4;
+        private static final int ACTION_ID_NEXT = 5;
 
         @NonNull
         @Override
@@ -114,6 +103,16 @@ public class AuthenticatorActivity extends AccountAuthenticatorActivity {
                     .title("Hostname/IP")
                     .descriptionEditInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI)
                     .descriptionInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI)
+                    .descriptionEditable(true)
+                    .build();
+
+            actions.add(action);
+
+            action = new GuidedAction.Builder(getActivity())
+                    .id(ACTION_ID_HTSP_PORT)
+                    .title("HTSP Port Number")
+                    .descriptionEditInputType(InputType.TYPE_CLASS_NUMBER)
+                    .descriptionInputType(InputType.TYPE_CLASS_NUMBER)
                     .descriptionEditable(true)
                     .build();
 
@@ -166,6 +165,17 @@ public class AuthenticatorActivity extends AccountAuthenticatorActivity {
                 }
 
                 args.putString(Constants.KEY_HOSTNAME, hostnameValue.toString());
+
+                // HTSP Port Field
+                GuidedAction htspPortAction = findActionById(ACTION_ID_HTSP_PORT);
+                CharSequence htspPortValue = htspPortAction.getDescription();
+
+                if (htspPortValue == null || TextUtils.isEmpty(htspPortValue)) {
+                    Toast.makeText(getActivity(), "Invalid HTSP Port", Toast.LENGTH_SHORT).show();
+                    return;
+                }
+
+                args.putString(Constants.KEY_HTSP_PORT, htspPortAction.getDescription().toString());
 
                 // HTTP Port Field
                 GuidedAction httpPortAction = findActionById(ACTION_ID_HTTP_PORT);
@@ -273,15 +283,19 @@ public class AuthenticatorActivity extends AccountAuthenticatorActivity {
                 args.putString(Constants.KEY_PASSWORD, passwordAction.getDescription().toString());
 
                 // Move to the next step
-                GuidedStepFragment fragment = new ValidateAccountFragment();
+                GuidedStepFragment fragment = new ValidateHTSPAccountFragment();
                 fragment.setArguments(args);
                 add(getFragmentManager(), fragment);
             }
         }
     }
 
-    public static class ValidateAccountFragment extends BaseGuidedStepFragment {
+    public static class ValidateHTSPAccountFragment extends BaseGuidedStepFragment {
         private static final int ACTION_ID_PROCESSING = 1;
+
+        private Connection mConnection;
+        private Thread mHtspConnectionThread;
+
 
         @Override
         public GuidedActionsStylist onCreateActionsStylist() {
@@ -305,7 +319,7 @@ public class AuthenticatorActivity extends AccountAuthenticatorActivity {
         public GuidanceStylist.Guidance onCreateGuidance(Bundle savedInstanceState) {
             GuidanceStylist.Guidance guidance = new GuidanceStylist.Guidance(
                     "Tvheadend Account",
-                    "Checking your account", null, null);
+                    "Checking your HTSP account", null, null);
 
             return guidance;
         }
@@ -330,74 +344,63 @@ public class AuthenticatorActivity extends AccountAuthenticatorActivity {
             final String accountName = args.getString(Constants.KEY_USERNAME);
             final String accountPassword = args.getString(Constants.KEY_PASSWORD);
             final String accountHostname = args.getString(Constants.KEY_HOSTNAME);
+            final String accountHtspPort = args.getString(Constants.KEY_HTSP_PORT);
             final String accountHttpPort = args.getString(Constants.KEY_HTTP_PORT);
             final String accountHttpPath = args.getString(Constants.KEY_HTTP_PATH);
 
-            // Validate the User and Pass by connecting to TVHeadend
-            Response.Listener<JSONObject> listener = new Response.Listener<JSONObject>() {
+            mConnection = new Connection(accountHostname, Integer.parseInt(accountHtspPort), accountName, accountPassword, "android-tvheadend (auth)", BuildConfig.VERSION_NAME);
 
+            final ConnectionListener connectionListener = new ConnectionListener() {
                 @Override
-                public void onResponse(JSONObject response) {
-                    Log.d(TAG, "Successfully validated credentials");
+                public void onStateChange(int state, int previous) {
+                    Log.d(TAG, "HTSP Connection State Changed: " + state);
+                    if (state == Connection.STATE_READY) {
+                        // Close the connection, it's no longer needed
+                        mConnection.close();
 
-                    // Store the account
-                    final Account account = new Account(accountName, accountType);
+                        // Store the account
+                        final Account account = new Account(accountName, accountType);
 
-                    Bundle userdata = new Bundle();
+                        Bundle userdata = new Bundle();
 
-                    userdata.putString(Constants.KEY_HOSTNAME, accountHostname);
-                    userdata.putString(Constants.KEY_HTTP_PORT, accountHttpPort);
+                        userdata.putString(Constants.KEY_HOSTNAME, accountHostname);
+                        userdata.putString(Constants.KEY_HTSP_PORT, accountHtspPort);
+                        userdata.putString(Constants.KEY_HTTP_PORT, accountHttpPort);
+                        userdata.putString(Constants.KEY_HTTP_PATH, accountHttpPath);
 
-                    mAccountManager.addAccountExplicitly(account, accountPassword, userdata);
+                        mAccountManager.addAccountExplicitly(account, accountPassword, userdata);
 
-                    // Store the result, with the username too
-                    userdata.putString(Constants.KEY_USERNAME, accountName);
+                        // Store the result, with the username too
+                        userdata.putString(Constants.KEY_USERNAME, accountName);
 
-                    AuthenticatorActivity activity = (AuthenticatorActivity) getActivity();
-                    activity.setAccountAuthenticatorResult(userdata);
+                        AuthenticatorActivity activity = (AuthenticatorActivity) getActivity();
+                        activity.setAccountAuthenticatorResult(userdata);
 
-                    // Move to the CompletedFragment
-                    GuidedStepFragment fragment = new CompletedFragment();
-                    fragment.setArguments(getArguments());
-                    add(getFragmentManager(), fragment);
+                        // Move to the CompletedFragment
+                        GuidedStepFragment fragment = new CompletedFragment();
+                        fragment.setArguments(getArguments());
+                        add(getFragmentManager(), fragment);
+                    } else if (state == Connection.STATE_FAILED) {
+                        // Close the connection, it's no longer needed
+                        mConnection.close();
 
-                }
-            };
+                        Log.w(TAG, "Failed to validate credentials");
 
-            Response.ErrorListener errorListener = new Response.ErrorListener() {
+                        Bundle args = getArguments();
+                        args.putString(Constants.KEY_ERROR_MESSAGE, "Failed to validate HTSP Credentials");
 
-                @Override
-                public void onErrorResponse(VolleyError error) {
-                    Log.d(TAG, "Failed to validate credentials");
-
-                    Bundle args = getArguments();
-
-                    if (error instanceof TimeoutError || error instanceof NoConnectionError) {
-                        args.putString(Constants.KEY_ERROR_MESSAGE, "Network Timeout!");
-                    } else if (error instanceof AuthFailureError) {
-                        args.putString(Constants.KEY_ERROR_MESSAGE, "Auth Failure!");
-                    } else if (error instanceof ServerError) {
-                        args.putString(Constants.KEY_ERROR_MESSAGE, "Unknown Server Error");
-                    } else if (error instanceof NetworkError) {
-                        args.putString(Constants.KEY_ERROR_MESSAGE, "Unknown Network Error");
-                    } else if (error instanceof ParseError) {
-                        args.putString(Constants.KEY_ERROR_MESSAGE, "Unknown Parse Error");
-                    } else {
-                        args.putString(Constants.KEY_ERROR_MESSAGE, "Unknown Error");
+                        // Move to the failed step
+                        GuidedStepFragment fragment = new FailedFragment();
+                        fragment.setArguments(args);
+                        add(getFragmentManager(), fragment);
                     }
-
-                    // Move to the failed step
-                    GuidedStepFragment fragment = new FailedFragment();
-                    fragment.setArguments(args);
-                    add(getFragmentManager(), fragment);
                 }
             };
 
-            TVHClient client = TVHClient.getInstance(getActivity());
+            mConnection.addConnectionListener(connectionListener);
 
-            client.setConnectionInfo(accountHostname, accountHttpPort, accountHttpPath, accountName, accountPassword);
-
-            client.getServerInfo(listener, errorListener);
+            mHtspConnectionThread = new Thread(mConnection);
+            mHtspConnectionThread.start();
         }
     }
 

@@ -12,7 +12,6 @@ import android.view.Surface;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import ie.macinnes.tvheadend.TvContractUtils;
-import ie.macinnes.tvheadend.model.Channel;
 
 abstract public class BaseSession extends android.media.tv.TvInputService.Session implements Handler.Callback {
     protected static final String TAG = BaseSession.class.getName();
@@ -28,6 +27,7 @@ abstract public class BaseSession extends android.media.tv.TvInputService.Sessio
 
     protected Surface mSurface;
     protected float mVolume;
+    protected boolean mCaptionEnabled;
 
     protected PlayChannelRunnable mPlayChannelRunnable;
 
@@ -59,6 +59,7 @@ abstract public class BaseSession extends android.media.tv.TvInputService.Sessio
     @Override
     public void onSetCaptionEnabled(boolean enabled) {
         Log.d(TAG, "Session onSetCaptionEnabled: " + enabled + " (" + mSessionNumber + ")");
+        mCaptionEnabled = enabled;
     }
 
     @Override
@@ -100,12 +101,12 @@ abstract public class BaseSession extends android.media.tv.TvInputService.Sessio
     public boolean handleMessage(Message msg) {
         switch (msg.what) {
             case MSG_PLAY_CHANNEL:
-                return playChannel((Channel) msg.obj);
+                return playChannel((int) msg.obj);
         }
         return false;
     }
 
-    abstract protected boolean playChannel(Channel channel);
+    abstract protected boolean playChannel(int tvhChannelId);
     abstract protected void stopPlayback();
 
     private class PlayChannelRunnable implements Runnable {
@@ -117,11 +118,11 @@ abstract public class BaseSession extends android.media.tv.TvInputService.Sessio
 
         @Override
         public void run() {
-            Channel channel = TvContractUtils.getChannelFromChannelUri(mContext, mChannelUri);
+            Integer tvhChannelId = TvContractUtils.getTvhChannelIdFromChannelUri(mContext, mChannelUri);
 
-            if (channel != null) {
+            if (tvhChannelId != null) {
                 mSessionHandler.removeMessages(MSG_PLAY_CHANNEL);
-                mSessionHandler.obtainMessage(MSG_PLAY_CHANNEL, channel).sendToTarget();
+                mSessionHandler.obtainMessage(MSG_PLAY_CHANNEL, tvhChannelId).sendToTarget();
             } else {
                 Log.w(TAG, "Failed to get channel info for " + mChannelUri);
             }

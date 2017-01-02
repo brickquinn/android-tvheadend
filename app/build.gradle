@@ -1,14 +1,40 @@
+import org.ajoberstar.grgit.Grgit
+
 apply plugin: 'com.android.application'
 
+ext {
+    git = Grgit.open()
+    gitVersionName = "${git.describe()}"
+}
+
 android {
-    compileSdkVersion 24
-    buildToolsVersion "24.0.1"
+    compileSdkVersion project.ext.compileSdkVersion
+    buildToolsVersion project.ext.buildToolsVersion
+
     defaultConfig {
         applicationId "ie.macinnes.tvheadend"
-        minSdkVersion 22
-        targetSdkVersion 24
-        versionCode 37
-        versionName '0.1.' + versionCode
+        minSdkVersion project.ext.minSdkVersion
+        targetSdkVersion project.ext.targetSdkVersion
+        versionCode System.getenv("APP_VERSION_CODE") as Integer ?: 0
+        versionName gitVersionName
+        setProperty("archivesBaseName", "${applicationId}_${versionName}")
+
+        buildConfigField "boolean", "ACRA_ENABLED", "false"
+        buildConfigField "String", "ACRA_REPORT_URI", "\"\""
+    }
+
+    signingConfigs {
+        if (rootProject.file("keystore.properties").exists()) {
+            def keystoreProperties = new Properties()
+            keystoreProperties.load(new FileInputStream(rootProject.file("keystore.properties")))
+
+            release {
+                storeFile new File(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
     }
 
     buildTypes {
@@ -18,9 +44,25 @@ android {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+
+            if (signingConfigs.hasProperty("release")) {
+                signingConfig signingConfigs.release
+            }
+
+            if (rootProject.file("acra.properties").exists()) {
+                buildConfigField "boolean", "ACRA_ENABLED", "true"
+                def acraProperties = new Properties()
+                acraProperties.load(new FileInputStream(rootProject.file("acra.properties")))
+                buildConfigField "String", "ACRA_REPORT_URI", "\"" + acraProperties.report_uri + "\""
+            }
         }
     }
+
     productFlavors {
+    }
+
+    lintOptions {
+        disable 'GoogleAppIndexingWarning'
     }
 }
 
@@ -32,19 +74,13 @@ repositories {
 
 dependencies {
     compile fileTree(include: ['*.jar'], dir: 'libs')
-    compile 'com.android.support:support-v4:24.1.1'
-    compile 'com.android.support:leanback-v17:24.1.1'
-    compile 'com.android.support:preference-leanback-v17:24.1.1'
-    compile 'com.google.code.gson:gson:2.6.2'
-    compile 'com.android.volley:volley:1.0.0'
-    compile 'com.google.firebase:firebase-core:9.0.2'
-    compile 'com.google.firebase:firebase-crash:9.0.2'
-    compile 'us.feras.mdv:markdownview:1.1.0'
-    compile 'com.google.android.exoplayer:exoplayer:r1.5.9'
+    // compile(name: 'vlc-android-sdk-release', ext: 'aar') // Used for testing local libvlc builds
+    compile project(':htsp')
+    compile 'com.android.support:support-v4:25.1.0'
+    compile 'com.android.support:leanback-v17:25.1.0'
+    compile 'com.android.support:preference-leanback-v17:25.1.0'
+    compile 'com.google.android.exoplayer:exoplayer:r2.1.1k2'
+    compile 'com.google.android.exoplayer:extension-ffmpeg:r2.1.1k2'
     compile 'de.mrmaffen:vlc-android-sdk:1.9.8'
-//    compile(name:'vlc-android-sdk-release', ext:'aar') // Used for testing local libvlc builds
-}
-
-if (project.file('google-services.json').exists()) {
-   apply plugin: 'com.google.gms.google-services'
+    compile 'ch.acra:acra:4.9.1'
 }

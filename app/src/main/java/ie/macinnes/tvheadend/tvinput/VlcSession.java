@@ -18,8 +18,7 @@ package ie.macinnes.tvheadend.tvinput;
 import android.accounts.Account;
 import android.accounts.AccountManager;
 import android.content.Context;
-import android.content.pm.PackageInfo;
-import android.content.pm.PackageManager;
+import android.content.SharedPreferences;
 import android.media.tv.TvTrackInfo;
 import android.net.Uri;
 import android.os.Build;
@@ -28,6 +27,7 @@ import android.util.Log;
 import android.view.Surface;
 import android.widget.Toast;
 
+import org.videolan.libvlc.IVLCVout;
 import org.videolan.libvlc.LibVLC;
 import org.videolan.libvlc.Media;
 import org.videolan.libvlc.MediaPlayer;
@@ -36,10 +36,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import ie.macinnes.tvheadend.BuildConfig;
 import ie.macinnes.tvheadend.Constants;
+import ie.macinnes.tvheadend.MiscUtils;
 import ie.macinnes.tvheadend.account.AccountUtils;
-import ie.macinnes.tvheadend.client.ClientUtils;
-import ie.macinnes.tvheadend.model.Channel;
 
 public class VlcSession extends BaseSession {
     private static final String TAG = VlcSession.class.getName();
@@ -56,31 +56,30 @@ public class VlcSession extends BaseSession {
         super(context, serviceHandler);
         Log.d(TAG, "Session created (" + mSessionNumber + ")");
 
+        // Fetch the chosen session type
+        SharedPreferences sharedPreferences = context.getSharedPreferences(
+                Constants.PREFERENCE_TVHEADEND, Context.MODE_PRIVATE);
+
         ArrayList<String> options = new ArrayList<>();
         options.add("--http-reconnect");
         options.add("--network-caching=2000");
-        options.add("--deinterlace=-1");
-        options.add("--deinterlace-mode=blend"); // discard,blend,mean,bob,linear,x,yadif,yadif2x,phosphor,ivtc
-        options.add("--video-filter=deinterlace");
+
+        if (sharedPreferences.getBoolean(Constants.KEY_DEINTERLACE_ENABLED, false)) {
+            String method = sharedPreferences.getString(Constants.KEY_DEINTERLACE_METHOD, null);
+            Log.d(TAG, "Using VLC deinterlace mode: " + method);
+            options.add("--video-filter=deinterlace");
+            options.add("--deinterlace=-1");
+            options.add("--deinterlace-mode="+method);
+        }
 
         mLibVLC = new LibVLC(options);
 
-        String userAgent = getUserAgent(mContext);
+        String userAgent = getUserAgent();
         mLibVLC.setUserAgent(userAgent, userAgent);
     }
 
-    public String getUserAgent(Context context) {
-        String versionName;
-
-        try {
-            String packageName = context.getPackageName();
-            PackageInfo info = context.getPackageManager().getPackageInfo(packageName, 0);
-            versionName = info.versionName;
-        } catch (PackageManager.NameNotFoundException e) {
-            versionName = "?";
-        }
-
-        return "android-tvheadend/" + versionName + " (Linux;Android " + Build.VERSION.RELEASE
+    public String getUserAgent() {
+        return "android-tvheadend/" + BuildConfig.VERSION_NAME + " (Linux;Android " + Build.VERSION.RELEASE
                 + ") VLC/" + mLibVLC.version();
     }
 
@@ -91,9 +90,17 @@ public class VlcSession extends BaseSession {
         mSurface = surface;
 
         if (mMediaPlayer != null && mSurface != null) {
-            mMediaPlayer.getVLCVout().setVideoSurface(surface, null);
-            mMediaPlayer.getVLCVout().attachViews();
+            IVLCVout vlcVout = mMediaPlayer.getVLCVout();
+
+            if (vlcVout.areViewsAttached()) {
+                // If we're already attached, we need to detach before switching surface
+                vlcVout.detachViews();
+            }
+
+            vlcVout.setVideoSurface(surface, null);
+            vlcVout.attachViews();
         }
+
 
         return true;
     }
@@ -140,15 +147,12 @@ public class VlcSession extends BaseSession {
         return result;
     }
 
-    protected boolean playChannel(Channel channel) {
+    protected boolean playChannel(int tvhChannelId) {
         // Stop any existing playback
         stopPlayback();
 
-        // Gather Details on the Channel
-        String channelUuid = channel.getInternalProviderData().getUuid();
-
         // Gather Details on the TVHeadend Instance
-        AccountManager accountManager = AccountManager.get(mContext);;
+        AccountManager accountManager = AccountManager.get(mContext);
         Account account = AccountUtils.getActiveAccount(mContext);
 
         String username = account.name;
@@ -158,13 +162,13 @@ public class VlcSession extends BaseSession {
         String httpPath = accountManager.getUserData(account, Constants.KEY_HTTP_PATH);
 
         // Create authentication headers and streamUri
-        Map<String, String> headers = ClientUtils.createBasicAuthHeader(username, password);
+        Map<String, String> headers = MiscUtils.createBasicAuthHeader(username, password);
         Uri videoUri;
 
         if (httpPath == null) {
-            videoUri = Uri.parse("http://" + username + ":" + password + "@" + hostname + ":" + httpPort + "/stream/channel/" + channelUuid + "?profile=tif");
+            videoUri = Uri.parse("http://" + username + ":" + password + "@" + hostname + ":" + httpPort + "/stream/channelid/" + tvhChannelId + "?profile=tif");
         } else {
-            videoUri = Uri.parse("http://" + username + ":" + password + "@" + hostname + ":" + httpPort + "/" + httpPath + "/stream/channel/" + channelUuid + "?profile=tif");
+            videoUri = Uri.parse("http://" + username + ":" + password + "@" + hostname + ":" + httpPort + "/" + httpPath + "/stream/channelid/" + tvhChannelId + "?profile=tif");
         }
 
         // Prepare the media player
@@ -172,7 +176,7 @@ public class VlcSession extends BaseSession {
 
         if (mMediaPlayer != null) {
             // Start the media playback
-            Log.d(TAG, "Starting playback of channel: " + channel.toString());
+            Log.d(TAG, "Starting playback of channel: " + tvhChannelId);
             mMediaPlayer.play();
 
             return true;

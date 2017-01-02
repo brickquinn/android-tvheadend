@@ -19,11 +19,9 @@ import android.accounts.AccountManager;
 import android.accounts.AccountManagerCallback;
 import android.accounts.AccountManagerFuture;
 import android.app.Activity;
-import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
-import android.content.SyncStatusObserver;
 import android.media.tv.TvInputInfo;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
@@ -37,11 +35,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 import ie.macinnes.tvheadend.Constants;
+import ie.macinnes.tvheadend.MiscUtils;
 import ie.macinnes.tvheadend.R;
 import ie.macinnes.tvheadend.TvContractUtils;
-import ie.macinnes.tvheadend.client.TVHClient;
-import ie.macinnes.tvheadend.migrate.MigrateUtils;
-import ie.macinnes.tvheadend.sync.SyncUtils;
+import ie.macinnes.tvheadend.account.AccountUtils;
+import ie.macinnes.tvheadend.settings.SettingsActivity;
+import ie.macinnes.tvheadend.sync.EpgSyncService;
 
 public class TvInputSetupActivity extends Activity {
     private static final String TAG = TvInputSetupActivity.class.getName();
@@ -49,9 +48,6 @@ public class TvInputSetupActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
-        // TODO: Find a better (+ out of UI thread) way to do this.
-        MigrateUtils.doMigrate(getBaseContext());
 
         GuidedStepFragment fragment = new IntroFragment();
         fragment.setArguments(getIntent().getExtras());
@@ -62,7 +58,6 @@ public class TvInputSetupActivity extends Activity {
         protected AccountManager mAccountManager;
 
         protected static Account sAccount;
-        protected static TVHClient sClient;
 
         @Override
         public int onProvideTheme() {
@@ -82,13 +77,12 @@ public class TvInputSetupActivity extends Activity {
             }
 
             mAccountManager = AccountManager.get(getActivity());
-            sClient = TVHClient.getInstance(getActivity());
         }
 
         protected Account getAccountByName(String name) {
             Log.d(TAG, "getAccountByName(" + name + ")");
 
-            Account[] accounts = mAccountManager.getAccountsByType(Constants.ACCOUNT_TYPE);
+            Account[] accounts = AccountUtils.getAllAccounts(getActivity());
 
             Log.d(TAG, "Checking " + Integer.toString(accounts.length) + " accounts");
 
@@ -134,61 +128,9 @@ public class TvInputSetupActivity extends Activity {
         @Override
         public void onGuidedActionClicked(GuidedAction action) {
             // Move onto the next step
-            GuidedStepFragment fragment = new IssuesFragment();
+            GuidedStepFragment fragment = new AccountSelectorFragment();
             fragment.setArguments(getArguments());
             add(getFragmentManager(), fragment);
-        }
-    }
-
-    public static class IssuesFragment extends BaseGuidedStepFragment {
-        private static final int ACTION_ID_SHOW_ISSUES = 1;
-        private static final int ACTION_ID_LETS_GO = 2;
-
-        @NonNull
-        @Override
-        public GuidanceStylist.Guidance onCreateGuidance(Bundle savedInstanceState) {
-            GuidanceStylist.Guidance guidance = new GuidanceStylist.Guidance(
-                    "Known Issues",
-                    "There are several known issues at the moment, without reading this info, it " +
-                    "is extremely unlikely you will get working video!",
-                    "TVHeadend",
-                    null);
-
-            return guidance;
-        }
-
-        @Override
-        public void onCreateActions(@NonNull List<GuidedAction> actions, Bundle savedInstanceState) {
-            GuidedAction action = new GuidedAction.Builder(getActivity())
-                    .id(ACTION_ID_SHOW_ISSUES)
-                    .title("Show Issues")
-                    .description("Show the known issues page")
-                    .editable(false)
-                    .build();
-
-            actions.add(action);
-
-            action = new GuidedAction.Builder(getActivity())
-                    .id(ACTION_ID_LETS_GO)
-                    .title("Begin")
-                    .description("Start Tvheadend Live Channel Setup")
-                    .editable(false)
-                    .build();
-
-            actions.add(action);
-        }
-
-        @Override
-        public void onGuidedActionClicked(GuidedAction action) {
-            if (action.getId() == ACTION_ID_SHOW_ISSUES) {
-                Intent intent = new Intent(getActivity(), IssuesActivity.class);
-                startActivity(intent);
-            } else if (action.getId() == ACTION_ID_LETS_GO) {
-                // Move onto the next step
-                GuidedStepFragment fragment = new AccountSelectorFragment();
-                fragment.setArguments(getArguments());
-                add(getFragmentManager(), fragment);
-            }
         }
     }
 
@@ -243,7 +185,7 @@ public class TvInputSetupActivity extends Activity {
             List<GuidedAction> accountSubActions = accountAction.getSubActions();
             accountSubActions.clear();
 
-            Account[] accounts = mAccountManager.getAccountsByType(Constants.ACCOUNT_TYPE);
+            Account[] accounts = AccountUtils.getAllAccounts(getActivity());
 
             for (Account account : accounts) {
                 GuidedAction action = new GuidedAction.Builder(getActivity())
@@ -302,9 +244,6 @@ public class TvInputSetupActivity extends Activity {
         @Override
         public void onGuidedActionClicked(GuidedAction action) {
             if (ACTION_ID_CONFIRM == action.getId()) {
-                // Setup the client with the selected account
-                sClient.setConnectionInfo(sAccount);
-
                 // Move onto the next step
                 GuidedStepFragment fragment = new SessionSelectorFragment();
                 fragment.setArguments(getArguments());
@@ -380,7 +319,7 @@ public class TvInputSetupActivity extends Activity {
 
             SharedPreferences.Editor editor = sharedPreferences.edit();
             editor.putString(Constants.KEY_SESSION, session);
-            editor.commit();
+            editor.apply();
 
             // Move onto the next step
             GuidedStepFragment fragment = new SyncingFragment();
@@ -390,24 +329,16 @@ public class TvInputSetupActivity extends Activity {
     }
 
     public static class SyncingFragment extends BaseGuidedStepFragment {
-        private Object mSyncStatusChangedReceiverHandle;
-        private final SyncStatusObserver mSyncStatusObserver = new SyncStatusObserver() {
 
+        protected Runnable mInitialSyncCompleteCallback = new Runnable() {
             @Override
-            public void onStatusChanged(int which) {
-                if (which == ContentResolver.SYNC_OBSERVER_TYPE_ACTIVE) {
-                    if (!ContentResolver.isSyncActive(sAccount, Constants.CONTENT_AUTHORITY)) {
-                        Log.d(TAG, "Initial Sync Completed");
+            public void run() {
+                Log.d(TAG, "Initial Sync Completed");
 
-                        // Set up a periodic sync from now on
-                        SyncUtils.setUpPeriodicSync(sAccount);
-
-                        // Move to the CompletedFragment
-                        GuidedStepFragment fragment = new CompletedFragment();
-                        fragment.setArguments(getArguments());
-                        add(getFragmentManager(), fragment);
-                    }
-                }
+                // Move to the CompletedFragment
+                GuidedStepFragment fragment = new CompletedFragment();
+                fragment.setArguments(getArguments());
+                add(getFragmentManager(), fragment);
             }
         };
 
@@ -415,23 +346,24 @@ public class TvInputSetupActivity extends Activity {
         public void onCreate(Bundle savedInstanceState) {
             super.onCreate(savedInstanceState);
 
-            mSyncStatusChangedReceiverHandle = ContentResolver.addStatusChangeListener(
-                    ContentResolver.SYNC_OBSERVER_TYPE_ACTIVE, mSyncStatusObserver);
+            EpgSyncService.addInitialSyncCompleteCallback(mInitialSyncCompleteCallback);
         }
 
         @Override
         public void onDestroy() {
             super.onDestroy();
 
-            ContentResolver.removeStatusChangeListener(mSyncStatusChangedReceiverHandle);
+            EpgSyncService.removeInitialSyncCompleteCallback(mInitialSyncCompleteCallback);
         }
 
         @Override
         public void onStart() {
             super.onStart();
 
-            // Force a EPG sync
-            SyncUtils.requestSync(sAccount, true);
+            // Start EPG sync service
+            Context context = getActivity().getBaseContext();
+            context.stopService(new Intent(context, EpgSyncService.class));
+            context.startService(new Intent(context, EpgSyncService.class));
         }
 
         @Override
@@ -474,6 +406,9 @@ public class TvInputSetupActivity extends Activity {
     }
 
     public static class CompletedFragment extends BaseGuidedStepFragment {
+        private static final int ACTION_ID_SETTINGS = 1;
+        private static final int ACTION_ID_COMPLETE = 2;
+
         @NonNull
         @Override
         public GuidanceStylist.Guidance onCreateGuidance(Bundle savedInstanceState) {
@@ -489,6 +424,16 @@ public class TvInputSetupActivity extends Activity {
         @Override
         public void onCreateActions(@NonNull List<GuidedAction> actions, Bundle savedInstanceState) {
             GuidedAction action = new GuidedAction.Builder(getActivity())
+                    .id(ACTION_ID_SETTINGS)
+                    .title("Settings")
+                    .description("Advanced Settings")
+                    .editable(false)
+                    .build();
+
+            actions.add(action);
+
+            action = new GuidedAction.Builder(getActivity())
+                    .id(ACTION_ID_COMPLETE)
                     .title("Complete")
                     .description("You're all set!")
                     .editable(false)
@@ -499,8 +444,13 @@ public class TvInputSetupActivity extends Activity {
 
         @Override
         public void onGuidedActionClicked(GuidedAction action) {
-            getActivity().setResult(Activity.RESULT_OK);
-            getActivity().finish();
+            if (action.getId() == ACTION_ID_SETTINGS) {
+                startActivity(SettingsActivity.getPreferencesIntent(getActivity()));
+            } else if (action.getId() == ACTION_ID_COMPLETE) {
+                MiscUtils.setSetupComplete(getActivity(), true);
+                getActivity().setResult(Activity.RESULT_OK);
+                getActivity().finish();
+            }
         }
     }
 }

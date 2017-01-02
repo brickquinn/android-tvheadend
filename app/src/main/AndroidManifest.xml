@@ -20,12 +20,17 @@ under the License.
     <!-- Required to play internet-based streaming contents. -->
     <uses-permission android:name="android.permission.INTERNET"/>
 
+    <!-- Required to check network connection status. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+
     <!-- Required to read and update channel and program information in TvProvider. -->
     <uses-permission android:name="com.android.providers.tv.permission.READ_EPG_DATA"/>
     <uses-permission android:name="com.android.providers.tv.permission.WRITE_EPG_DATA"/>
 
     <!-- Required to use the android AccountManager -->
-    <uses-permission android:name="android.permission.GET_ACCOUNTS"/>
+    <uses-permission
+        android:name="android.permission.GET_ACCOUNTS"
+        android:maxSdkVersion="22"/>
     <uses-permission android:name="android.permission.MANAGE_ACCOUNTS"/>
     <uses-permission android:name="android.permission.AUTHENTICATE_ACCOUNTS"/>
 
@@ -33,7 +38,7 @@ under the License.
     <uses-permission android:name="android.permission.READ_SYNC_STATS"/>
     <uses-permission android:name="android.permission.READ_SYNC_SETTINGS"/>
     <uses-permission android:name="android.permission.WRITE_SYNC_SETTINGS"/>
-	<uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
 
     <!-- Expose this app in the store only to devices with leanback UI framework -->
     <uses-feature
@@ -57,23 +62,23 @@ under the License.
         android:required="false"/>
 
     <application
+        android:name=".Application"
         android:allowBackup="true"
+        android:fullBackupContent="@xml/backup"
         android:banner="@drawable/banner"
         android:icon="@mipmap/ic_tv_service"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.Leanback">
 
-        <!--
-             Redirects the user to the Input Setup (on N+) or Live Channels app (pre-N)
-        -->
+        <!-- Redirects the user to the Input Setup (on N+) or Live Channels app (pre-N) -->
         <activity
             android:name=".MainActivity"
             android:icon="@mipmap/ic_tv_service"
             android:label="@string/app_name">
-
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
+
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER"/>
             </intent-filter>
         </activity>
@@ -84,15 +89,13 @@ under the License.
         -->
         <activity
             android:name=".setup.TvInputSetupActivity"
+            android:exported="true"
             android:icon="@mipmap/ic_tv_service"
-            android:label="@string/app_name"
-            android:exported="true">
+            android:label="@string/app_name">
         </activity>
-
-        <activity android:name=".setup.IssuesActivity">
-        </activity>
-
-        <activity android:name=".setup.VlcSetupActivity">
+        <activity
+            android:name=".settings.SettingsActivity"
+            android:theme="@style/Theme.Preferences">
         </activity>
 
         <service
@@ -118,7 +121,9 @@ under the License.
             android:name=".account.AuthenticatorActivity"
             android:label="@string/title_activity_authenticator"/>
 
-        <service android:name=".account.AuthenticatorService">
+        <service
+            android:name=".account.AuthenticatorService"
+            android:permission="android.permission.ACCOUNT_MANAGER">
             <intent-filter>
                 <action android:name="android.accounts.AccountAuthenticator"/>
             </intent-filter>
@@ -130,28 +135,20 @@ under the License.
 
         <!-- This service is for syncing Channel and EPG data -->
         <service
-            android:name=".sync.SyncService"
-            android:exported="true"
-            android:process=":sync">
-
-            <intent-filter>
-                <action android:name="android.content.SyncAdapter"/>
-            </intent-filter>
-
-            <meta-data
-                android:name="android.content.SyncAdapter"
-                android:resource="@xml/syncadapter"/>
+            android:name=".sync.EpgSyncService"
+            android:enabled="true">
+            <!--android:process=":sync"-->
         </service>
-		
+
+        <!-- This receiver is needed for home screen recommendations -->
         <receiver
-            android:enabled="true"
             android:name=".BootCompletedReceiver"
+            android:enabled="true"
             android:permission="android.permission.RECEIVE_BOOT_COMPLETED">
             <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
             </intent-filter>
         </receiver>
-
     </application>
 
 </manifest>

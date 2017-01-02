@@ -16,10 +16,10 @@ android:
     - platform-tools
 
     # The BuildTools version used by your project
-    - build-tools-24.0.1
+    - build-tools-25.0.2
 
     # The SDK version used to compile your project
-    - android-24
+    - android-25
 
     # Additional components
     - extra-google-google_play_services
@@ -29,7 +29,7 @@ android:
 
     # Specify at least one system image,
     # if you need to run emulator(s) during your tests
-    - sys-img-x86-android-tv-24
+    #- sys-img-x86-android-tv-24
 
 addons:
   artifacts:

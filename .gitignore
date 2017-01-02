@@ -1,5 +1,8 @@
 .DS_Store
 google-services.json
+acra.properties
+keystore.properties
+/projectFilesBackup/
 
 ## From: https://github.com/github/gitignore/blob/master/Android.gitignore
 # Built application files
@@ -43,3 +46,6 @@ captures/
 
 # Keystore files
 *.jks
+
+# Editor Save Files
+.*.swp

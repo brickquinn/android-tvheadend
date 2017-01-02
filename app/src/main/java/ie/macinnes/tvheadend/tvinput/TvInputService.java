@@ -15,6 +15,7 @@ under the License.
 package ie.macinnes.tvheadend.tvinput;
 
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -22,6 +23,7 @@ import android.util.Log;
 
 import ie.macinnes.tvheadend.Constants;
 import ie.macinnes.tvheadend.migrate.MigrateUtils;
+import ie.macinnes.tvheadend.sync.EpgSyncService;
 
 
 public class TvInputService extends android.media.tv.TvInputService {
@@ -40,14 +42,14 @@ public class TvInputService extends android.media.tv.TvInputService {
         mHandlerThread.start();
         mHandler = new Handler(mHandlerThread.getLooper());
 
-        // TODO: Find a better (+ out of UI thread) way to do this.
-        MigrateUtils.doMigrate(getBaseContext());
-
-        // Store the chosen session type
+        // Fetch the chosen session type
         SharedPreferences sharedPreferences = getSharedPreferences(
                 Constants.PREFERENCE_TVHEADEND, Context.MODE_PRIVATE);
 
         mSessionType = sharedPreferences.getString(Constants.KEY_SESSION, Constants.SESSION_MEDIA_PLAYER);
+
+        // Start the EPG Sync Service
+        getApplicationContext().startService(new Intent(getApplicationContext(), EpgSyncService.class));
     }
 
     @Override
@@ -66,10 +68,11 @@ public class TvInputService extends android.media.tv.TvInputService {
         if (mSessionType != null && mSessionType.equals(Constants.SESSION_VLC)) {
             return new VlcSession(this, mHandler);
         } else if (mSessionType != null && mSessionType.equals(Constants.SESSION_EXO_PLAYER)) {
-            return new DemoPlayerSession(this, mHandler);
+            return new ExoPlayerSession(this, mHandler);
         } else {
             return new MediaPlayerSession(this, mHandler);
         }
+
     }
 
 }

@@ -19,29 +19,26 @@ import android.accounts.Account;
 import android.accounts.AccountManager;
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.content.pm.PackageManager;
+import android.support.v7.preference.PreferenceManager;
 import android.util.Log;
 
 import ie.macinnes.tvheadend.Constants;
+import ie.macinnes.tvheadend.MiscUtils;
+import ie.macinnes.tvheadend.R;
+import ie.macinnes.tvheadend.account.AccountUtils;
 
 
 public class MigrateUtils {
-    public static final String TAG = MigrateUtils.class.getSimpleName();
+    public static final String TAG = MigrateUtils.class.getName();
 
     public static void doMigrate(Context context) {
         Log.d(TAG, "doMigrate()");
 
-        // Store the current version
-        int currentApplicationVersion = 0;
+        // Set all default values
+        PreferenceManager.setDefaultValues(context, R.xml.preferences, false);
 
-        try {
-            currentApplicationVersion = context.getPackageManager()
-                    .getPackageInfo(context.getPackageName(), 0)
-                    .versionCode;
-        } catch (PackageManager.NameNotFoundException e) {
-            Log.w(TAG, "Failed to lookup current application version", e);
-            return;
-        }
+        // Store the current version
+        int currentApplicationVersion = Constants.MIGRATE_VERSION;
 
         // Store the last migrated version
         SharedPreferences sharedPreferences = context.getSharedPreferences(
@@ -50,26 +47,43 @@ public class MigrateUtils {
         int lastInstalledApplicationVersion = sharedPreferences.getInt(
                 Constants.KEY_APP_VERSION, 0);
 
-        Log.d(TAG, "Migrate from " + lastInstalledApplicationVersion + " to " + currentApplicationVersion);
+        Log.i(TAG, "Migrate from " + lastInstalledApplicationVersion + " to " + currentApplicationVersion);
 
         // Run any migrations
         if (currentApplicationVersion != lastInstalledApplicationVersion) {
             if (lastInstalledApplicationVersion <= 14) {
                 migrateAccountsPortName(context);
             }
+            if (lastInstalledApplicationVersion <= 38) {
+                migrateAccountHtspPort(context);
+            }
+            if (lastInstalledApplicationVersion <= 79) {
+                migrateSetupCompleted(context);
+            }
         }
 
         // Store the current version as the last installed version
         SharedPreferences.Editor editor = sharedPreferences.edit();
         editor.putInt(Constants.KEY_APP_VERSION, currentApplicationVersion);
-        editor.commit();
+        editor.apply();
+    }
+
+    protected static void migrateSetupCompleted(Context context) {
+        Log.d(TAG, "migrateSetupCompleted()");
+
+        Account account = AccountUtils.getActiveAccount(context);
+
+        if (account != null) {
+            // We have an account, so lets assume the user completed the setup.
+            MiscUtils.setSetupComplete(context, true);
+        }
     }
 
     protected static void migrateAccountsPortName(Context context) {
         Log.d(TAG, "migrateAccountsPortData()");
 
         AccountManager accountManager = AccountManager.get(context);
-        Account[] accounts = accountManager.getAccountsByType(Constants.ACCOUNT_TYPE);
+        Account[] accounts = AccountUtils.getAllAccounts(context);
 
         for (Account account : accounts) {
             String port = accountManager.getUserData(account, "PORT");
@@ -78,6 +92,20 @@ public class MigrateUtils {
                 accountManager.setUserData(account, Constants.KEY_HTTP_PORT, port);
                 accountManager.setUserData(account, "PORT", null);
             }
+        }
+    }
+
+    protected static void migrateAccountHtspPort(Context context) {
+        Log.d(TAG, "migrateAccountHtspPort()");
+
+        AccountManager accountManager = AccountManager.get(context);
+        Account[] accounts = AccountUtils.getAllAccounts(context);
+
+        for (Account account : accounts) {
+            String httpPort = accountManager.getUserData(account, Constants.KEY_HTTP_PORT);
+
+            int htspPort = Integer.parseInt(httpPort) + 1;
+            accountManager.setUserData(account, Constants.KEY_HTSP_PORT, Integer.toString(htspPort));
         }
     }
 }
