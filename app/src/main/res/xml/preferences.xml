@@ -19,35 +19,62 @@
     xmlns:android="http://schemas.android.com/apk/res/android"
     android:title="TVHeadend Settings">
 
-    <PreferenceCategory android:title="Video Playback">
-        <!-- TODO: These all-caps keys just look silly, but are needed for backward compat -->
-        <ListPreference
-            android:key="SESSION"
-            android:title="Video Player Choice"
-            android:dialogTitle="Video Player Choice"
-            android:entries="@array/video_player_names"
-            android:entryValues="@array/video_player_values" />
+    <PreferenceCategory android:title="Audio and Video">
+        <CheckBoxPreference
+            android:key="audio_passthrough_decodeder_enabled"
+            android:title="Enable Audio Passthrough"
+            android:defaultValue="true"
+            android:summary="You must also ensure the system audio settings allows passthrough"/>
+
+        <CheckBoxPreference
+            android:key="ffmpeg_audio_enabled"
+            android:title="Enable FFMpeg Audio Codecs"
+            android:defaultValue="true"/>
+
+        <CheckBoxPreference
+            android:key="captions_apply_embedded_styles"
+            android:title="Apply embedded caption styles"
+            android:defaultValue="true"/>
     </PreferenceCategory>
 
-    <PreferenceCategory android:title="Video Player Settings">
-        <PreferenceScreen android:title="VLC Settings" android:key="vlc_settings" android:persistent="false">
-            <CheckBoxPreference
-                android:key="vlc_deinterlace_enabled"
-                android:title="Deinterlace Enabled"
-                android:defaultValue="true" />
-
-            <ListPreference
-                android:key="vlc_deinterlace_method"
-                android:title="Deinterlace Method"
-                android:dialogTitle="Deinterlace Method"
-                android:entries="@array/vlc_deinterlace_names"
-                android:entryValues="@array/vlc_deinterlace_values"
-                android:defaultValue="blend"
-                android:dependency="vlc_deinterlace_enabled"/>
-        </PreferenceScreen>
+    <PreferenceCategory android:title="EPG">
+        <CheckBoxPreference
+            android:key="epg_sync_enabled"
+            android:title="Enable EPG Sync"
+            android:defaultValue="true" />
+        <ListPreference
+            android:key="epg_max_time"
+            android:title="EPG Sync Duration"
+            android:dialogTitle="EPG Sync Duration"
+            android:entries="@array/epg_max_time_names"
+            android:entryValues="@array/epg_max_time_values"
+            android:defaultValue="86400"
+            android:summary="Amount of EPG data to sync"/>
+        <CheckBoxPreference
+            android:key="epg_last_update_enabled"
+            android:title="Enable Last Update Time Optimization"
+            android:summary="Disable if you see gaps in EPG data"
+            android:defaultValue="true" />
+        <CheckBoxPreference
+            android:key="epg_default_poster_art_enabled"
+            android:title="Enable EPG Default Poster Art"
+            android:summary="Enable if EPG data provider does not include poster art"
+            android:defaultValue="false" />
     </PreferenceCategory>
 
     <PreferenceCategory android:title="Advanced Settings">
+        <CheckBoxPreference
+            android:key="shield_workaround_enabled"
+            android:title="Enable nVidia Shield Workaround"
+            android:defaultValue="true" />
+
+        <!-- TODO: This needs to be made into a list, based on fetching the list of available profiles -->
+        <EditTextPreference
+            android:key="htsp_stream_profile"
+            android:title="HTSP Stream Profile"
+            android:summary="Stream profile to use for HTSP video"
+            android:defaultValue="htsp" />
+
         <PreferenceScreen android:title="Crash Reporting Settings" android:key="crash_reporting_settings" android:persistent="false">
             <CheckBoxPreference android:key="acra.enable"
                                 android:title="@string/pref_disable_acra"

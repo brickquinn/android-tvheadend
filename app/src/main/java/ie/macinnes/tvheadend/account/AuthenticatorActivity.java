@@ -18,6 +18,7 @@ import android.accounts.Account;
 import android.accounts.AccountAuthenticatorActivity;
 import android.accounts.AccountManager;
 import android.os.Bundle;
+import android.os.Handler;
 import android.support.annotation.NonNull;
 import android.support.v17.leanback.app.GuidedStepFragment;
 import android.support.v17.leanback.widget.GuidanceStylist;
@@ -30,12 +31,12 @@ import android.widget.Toast;
 
 import java.util.List;
 
-import ie.macinnes.htsp.Connection;
-import ie.macinnes.htsp.ConnectionListener;
+import ie.macinnes.htsp.HtspConnection;
+import ie.macinnes.htsp.SimpleHtspConnection;
+import ie.macinnes.htsp.tasks.Authenticator;
 import ie.macinnes.tvheadend.BuildConfig;
 import ie.macinnes.tvheadend.Constants;
 import ie.macinnes.tvheadend.R;
-import ie.macinnes.tvheadend.migrate.MigrateUtils;
 
 public class AuthenticatorActivity extends AccountAuthenticatorActivity {
     private static final String TAG = AuthenticatorActivity.class.getName();
@@ -82,17 +83,14 @@ public class AuthenticatorActivity extends AccountAuthenticatorActivity {
     public static class ServerFragment extends BaseGuidedStepFragment {
         private static final int ACTION_ID_HOSTNAME = 1;
         private static final int ACTION_ID_HTSP_PORT = 2;
-        private static final int ACTION_ID_HTTP_PORT = 3;
-        private static final int ACTION_ID_HTTP_PATH = 4;
-        private static final int ACTION_ID_NEXT = 5;
+        private static final int ACTION_ID_NEXT = 3;
 
         @NonNull
         @Override
         public GuidanceStylist.Guidance onCreateGuidance(Bundle savedInstanceState) {
             GuidanceStylist.Guidance guidance = new GuidanceStylist.Guidance(
-                    "Tvheadend server",
-                    "Enter your Tvheadend server hostname or IP address", null, null);
-
+                    getString(R.string.server_name),
+                    getString(R.string.server_name_body), null, null);
             return guidance;
         }
 
@@ -100,7 +98,7 @@ public class AuthenticatorActivity extends AccountAuthenticatorActivity {
         public void onCreateActions(@NonNull List<GuidedAction> actions, Bundle savedInstanceState) {
             GuidedAction action = new GuidedAction.Builder(getActivity())
                     .id(ACTION_ID_HOSTNAME)
-                    .title("Hostname/IP")
+                    .title(R.string.server_ip)
                     .descriptionEditInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI)
                     .descriptionInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI)
                     .descriptionEditable(true)
@@ -110,29 +108,9 @@ public class AuthenticatorActivity extends AccountAuthenticatorActivity {
 
             action = new GuidedAction.Builder(getActivity())
                     .id(ACTION_ID_HTSP_PORT)
-                    .title("HTSP Port Number")
+                    .title(R.string.server_htsp_port)
                     .descriptionEditInputType(InputType.TYPE_CLASS_NUMBER)
                     .descriptionInputType(InputType.TYPE_CLASS_NUMBER)
-                    .descriptionEditable(true)
-                    .build();
-
-            actions.add(action);
-
-            action = new GuidedAction.Builder(getActivity())
-                    .id(ACTION_ID_HTTP_PORT)
-                    .title("HTTP Port Number")
-                    .descriptionEditInputType(InputType.TYPE_CLASS_NUMBER)
-                    .descriptionInputType(InputType.TYPE_CLASS_NUMBER)
-                    .descriptionEditable(true)
-                    .build();
-
-            actions.add(action);
-
-            action = new GuidedAction.Builder(getActivity())
-                    .id(ACTION_ID_HTTP_PATH)
-                    .title("HTTP Path Prefix")
-                    .descriptionEditInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI)
-                    .descriptionInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI)
                     .descriptionEditable(true)
                     .build();
 
@@ -143,7 +121,7 @@ public class AuthenticatorActivity extends AccountAuthenticatorActivity {
         public void onCreateButtonActions(@NonNull List<GuidedAction> actions, Bundle savedInstanceState) {
             GuidedAction action = new GuidedAction.Builder(getActivity())
                     .id(ACTION_ID_NEXT)
-                    .title("Next")
+                    .title(R.string.setup_continue)
                     .editable(false)
                     .build();
 
@@ -160,7 +138,7 @@ public class AuthenticatorActivity extends AccountAuthenticatorActivity {
                 CharSequence hostnameValue = hostnameAction.getDescription();
 
                 if (hostnameValue == null || TextUtils.isEmpty(hostnameValue)) {
-                    Toast.makeText(getActivity(), "Invalid Hostname", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(getActivity(), R.string.server_ip_invalid, Toast.LENGTH_SHORT).show();
                     return;
                 }
 
@@ -171,32 +149,11 @@ public class AuthenticatorActivity extends AccountAuthenticatorActivity {
                 CharSequence htspPortValue = htspPortAction.getDescription();
 
                 if (htspPortValue == null || TextUtils.isEmpty(htspPortValue)) {
-                    Toast.makeText(getActivity(), "Invalid HTSP Port", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(getActivity(), R.string.server_htsp_port_invalid, Toast.LENGTH_SHORT).show();
                     return;
                 }
 
                 args.putString(Constants.KEY_HTSP_PORT, htspPortAction.getDescription().toString());
-
-                // HTTP Port Field
-                GuidedAction httpPortAction = findActionById(ACTION_ID_HTTP_PORT);
-                CharSequence httpPortValue = httpPortAction.getDescription();
-
-                if (httpPortValue == null || TextUtils.isEmpty(httpPortValue)) {
-                    Toast.makeText(getActivity(), "Invalid HTTP Port", Toast.LENGTH_SHORT).show();
-                    return;
-                }
-
-                args.putString(Constants.KEY_HTTP_PORT, httpPortAction.getDescription().toString());
-
-                // HTTP Path Field
-                GuidedAction httpPathAction = findActionById(ACTION_ID_HTTP_PATH);
-                CharSequence httpPathValue = httpPathAction.getDescription();
-
-                if (httpPathValue != null) {
-                    args.putString(Constants.KEY_HTTP_PATH, httpPathValue.toString());
-                } else {
-                    args.putString(Constants.KEY_HTTP_PATH, "");
-                }
 
                 // Move to the next setup
                 GuidedStepFragment fragment = new AccountFragment();
@@ -215,9 +172,8 @@ public class AuthenticatorActivity extends AccountAuthenticatorActivity {
         @Override
         public GuidanceStylist.Guidance onCreateGuidance(Bundle savedInstanceState) {
             GuidanceStylist.Guidance guidance = new GuidanceStylist.Guidance(
-                    "Tvheadend Account",
-                    "Enter your Tvheadend username and password", null, null);
-
+                    getString(R.string.account_name),
+                    getString(R.string.account_name_body), null, null);
             return guidance;
         }
 
@@ -225,7 +181,7 @@ public class AuthenticatorActivity extends AccountAuthenticatorActivity {
         public void onCreateActions(@NonNull List<GuidedAction> actions, Bundle savedInstanceState) {
             GuidedAction action = new GuidedAction.Builder(getActivity())
                     .id(ACTION_ID_USERNAME)
-                    .title("Username")
+                    .title(R.string.account_username)
                     .descriptionEditInputType(InputType.TYPE_CLASS_TEXT)
                     .descriptionInputType(InputType.TYPE_CLASS_TEXT)
                     .descriptionEditable(true)
@@ -235,7 +191,7 @@ public class AuthenticatorActivity extends AccountAuthenticatorActivity {
 
             action = new GuidedAction.Builder(getActivity())
                     .id(ACTION_ID_PASSWORD)
-                    .title("Password")
+                    .title(R.string.account_password)
                     .descriptionEditInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD)
                     .descriptionInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD)
                     .descriptionEditable(true)
@@ -248,7 +204,7 @@ public class AuthenticatorActivity extends AccountAuthenticatorActivity {
         public void onCreateButtonActions(@NonNull List<GuidedAction> actions, Bundle savedInstanceState) {
             GuidedAction action = new GuidedAction.Builder(getActivity())
                     .id(ACTION_ID_ADD_ACCOUNT)
-                    .title("Finish")
+                    .title(R.string.setup_account_finish)
                     .editable(false)
                     .build();
 
@@ -265,7 +221,7 @@ public class AuthenticatorActivity extends AccountAuthenticatorActivity {
                 CharSequence usernameValue = usernameAction.getDescription();
 
                 if (usernameValue == null || TextUtils.isEmpty(usernameValue)) {
-                    Toast.makeText(getActivity(), "Invalid Username", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(getActivity(), R.string.account_username_invalid, Toast.LENGTH_SHORT).show();
                     return;
                 }
 
@@ -276,7 +232,7 @@ public class AuthenticatorActivity extends AccountAuthenticatorActivity {
                 CharSequence passwordValue = passwordAction.getDescription();
 
                 if (passwordValue == null || TextUtils.isEmpty(passwordValue)) {
-                    Toast.makeText(getActivity(), "Invalid Password", Toast.LENGTH_SHORT).show();
+                    Toast.makeText(getActivity(), R.string.account_password_invalid, Toast.LENGTH_SHORT).show();
                     return;
                 }
 
@@ -290,12 +246,17 @@ public class AuthenticatorActivity extends AccountAuthenticatorActivity {
         }
     }
 
-    public static class ValidateHTSPAccountFragment extends BaseGuidedStepFragment {
+    public static class ValidateHTSPAccountFragment extends BaseGuidedStepFragment implements
+            HtspConnection.Listener, Authenticator.Listener{
         private static final int ACTION_ID_PROCESSING = 1;
 
-        private Connection mConnection;
-        private Thread mHtspConnectionThread;
+        private SimpleHtspConnection mConnection;
 
+        protected String mAccountType;
+        protected String mAccountName;
+        protected String mAccountPassword;
+        protected String mAccountHostname;
+        protected String mAccountHtspPort;
 
         @Override
         public GuidedActionsStylist onCreateActionsStylist() {
@@ -318,9 +279,8 @@ public class AuthenticatorActivity extends AccountAuthenticatorActivity {
         @Override
         public GuidanceStylist.Guidance onCreateGuidance(Bundle savedInstanceState) {
             GuidanceStylist.Guidance guidance = new GuidanceStylist.Guidance(
-                    "Tvheadend Account",
-                    "Checking your HTSP account", null, null);
-
+                    getString(R.string.account_name),
+                    getString(R.string.setup_progress_title), null, null);
             return guidance;
         }
 
@@ -328,7 +288,7 @@ public class AuthenticatorActivity extends AccountAuthenticatorActivity {
         public void onCreateActions(@NonNull List<GuidedAction> actions, Bundle savedInstanceState) {
             GuidedAction action = new GuidedAction.Builder(getActivity())
                     .id(ACTION_ID_PROCESSING)
-                    .title("Processing")
+                    .title(R.string.setup_progress_body)
                     .infoOnly(true)
                     .build();
             actions.add(action);
@@ -340,67 +300,91 @@ public class AuthenticatorActivity extends AccountAuthenticatorActivity {
 
             Bundle args = getArguments();
 
-            final String accountType = args.getString(AccountManager.KEY_ACCOUNT_TYPE);
-            final String accountName = args.getString(Constants.KEY_USERNAME);
-            final String accountPassword = args.getString(Constants.KEY_PASSWORD);
-            final String accountHostname = args.getString(Constants.KEY_HOSTNAME);
-            final String accountHtspPort = args.getString(Constants.KEY_HTSP_PORT);
-            final String accountHttpPort = args.getString(Constants.KEY_HTTP_PORT);
-            final String accountHttpPath = args.getString(Constants.KEY_HTTP_PATH);
+            mAccountType = args.getString(AccountManager.KEY_ACCOUNT_TYPE);
+            mAccountName = args.getString(Constants.KEY_USERNAME);
+            mAccountPassword = args.getString(Constants.KEY_PASSWORD);
+            mAccountHostname = args.getString(Constants.KEY_HOSTNAME);
+            mAccountHtspPort = args.getString(Constants.KEY_HTSP_PORT);
 
-            mConnection = new Connection(accountHostname, Integer.parseInt(accountHtspPort), accountName, accountPassword, "android-tvheadend (auth)", BuildConfig.VERSION_NAME);
+            HtspConnection.ConnectionDetails connectionDetails = new HtspConnection.ConnectionDetails(
+                    mAccountHostname, Integer.parseInt(mAccountHtspPort), mAccountName,
+                    mAccountPassword, "android-tvheadend (auth)", BuildConfig.VERSION_NAME);
 
-            final ConnectionListener connectionListener = new ConnectionListener() {
-                @Override
-                public void onStateChange(int state, int previous) {
-                    Log.d(TAG, "HTSP Connection State Changed: " + state);
-                    if (state == Connection.STATE_READY) {
-                        // Close the connection, it's no longer needed
-                        mConnection.close();
+            mConnection = new SimpleHtspConnection(connectionDetails);
+            mConnection.addConnectionListener(this);
+            mConnection.addAuthenticationListener(this);
+            mConnection.start();
+        }
 
-                        // Store the account
-                        final Account account = new Account(accountName, accountType);
+        @Override
+        public void onStop() {
+            super.onStop();
 
-                        Bundle userdata = new Bundle();
+            mConnection.stop();
+            mConnection.removeConnectionListener(this);
+            mConnection.removeAuthenticationListener(this);
+            mConnection = null;
+        }
 
-                        userdata.putString(Constants.KEY_HOSTNAME, accountHostname);
-                        userdata.putString(Constants.KEY_HTSP_PORT, accountHtspPort);
-                        userdata.putString(Constants.KEY_HTTP_PORT, accountHttpPort);
-                        userdata.putString(Constants.KEY_HTTP_PATH, accountHttpPath);
+        @Override
+        public Handler getHandler() {
+            return null;
+        }
 
-                        mAccountManager.addAccountExplicitly(account, accountPassword, userdata);
+        @Override
+        public void setConnection(@NonNull HtspConnection htspConnection) {
 
-                        // Store the result, with the username too
-                        userdata.putString(Constants.KEY_USERNAME, accountName);
+        }
 
-                        AuthenticatorActivity activity = (AuthenticatorActivity) getActivity();
-                        activity.setAccountAuthenticatorResult(userdata);
+        @Override
+        public void onConnectionStateChange(@NonNull HtspConnection.State state) {
+            if (state == HtspConnection.State.FAILED) {
+                Log.w(TAG, "Failed to connect to HTSP server");
 
-                        // Move to the CompletedFragment
-                        GuidedStepFragment fragment = new CompletedFragment();
-                        fragment.setArguments(getArguments());
-                        add(getFragmentManager(), fragment);
-                    } else if (state == Connection.STATE_FAILED) {
-                        // Close the connection, it's no longer needed
-                        mConnection.close();
+                Bundle args = getArguments();
+                args.putString(Constants.KEY_ERROR_MESSAGE, getString(R.string.setup_htsp_failed));
 
-                        Log.w(TAG, "Failed to validate credentials");
+                // Move to the failed step
+                GuidedStepFragment fragment = new FailedFragment();
+                fragment.setArguments(args);
+                add(getFragmentManager(), fragment);
+            }
+        }
 
-                        Bundle args = getArguments();
-                        args.putString(Constants.KEY_ERROR_MESSAGE, "Failed to validate HTSP Credentials");
+        @Override
+        public void onAuthenticationStateChange(@NonNull Authenticator.State state) {
+            if (state == Authenticator.State.AUTHENTICATED) {
+                // Store the account
+                final Account account = new Account(mAccountName, mAccountType);
 
-                        // Move to the failed step
-                        GuidedStepFragment fragment = new FailedFragment();
-                        fragment.setArguments(args);
-                        add(getFragmentManager(), fragment);
-                    }
-                }
-            };
+                Bundle userdata = new Bundle();
 
-            mConnection.addConnectionListener(connectionListener);
+                userdata.putString(Constants.KEY_HOSTNAME, mAccountHostname);
+                userdata.putString(Constants.KEY_HTSP_PORT, mAccountHtspPort);
 
-            mHtspConnectionThread = new Thread(mConnection);
-            mHtspConnectionThread.start();
+                mAccountManager.addAccountExplicitly(account, mAccountPassword, userdata);
+
+                // Store the result, with the username too
+                userdata.putString(Constants.KEY_USERNAME, mAccountName);
+
+                AuthenticatorActivity activity = (AuthenticatorActivity) getActivity();
+                activity.setAccountAuthenticatorResult(userdata);
+
+                // Move to the CompletedFragment
+                GuidedStepFragment fragment = new CompletedFragment();
+                fragment.setArguments(getArguments());
+                add(getFragmentManager(), fragment);
+            } else if (state == Authenticator.State.FAILED) {
+                Log.w(TAG, "Failed to validate credentials");
+
+                Bundle args = getArguments();
+                args.putString(Constants.KEY_ERROR_MESSAGE, getString(R.string.setup_failed_htsp));
+
+                // Move to the failed step
+                GuidedStepFragment fragment = new FailedFragment();
+                fragment.setArguments(args);
+                add(getFragmentManager(), fragment);
+            }
         }
     }
 
@@ -409,8 +393,8 @@ public class AuthenticatorActivity extends AccountAuthenticatorActivity {
         @Override
         public GuidanceStylist.Guidance onCreateGuidance(Bundle savedInstanceState) {
             GuidanceStylist.Guidance guidance = new GuidanceStylist.Guidance(
-                    "Tvheadend Account",
-                    "Successfully Added Account",
+                    getString(R.string.account_name),
+                    getString(R.string.account_add_successful),
                     null,
                     null);
 
@@ -420,8 +404,8 @@ public class AuthenticatorActivity extends AccountAuthenticatorActivity {
         @Override
         public void onCreateActions(@NonNull List<GuidedAction> actions, Bundle savedInstanceState) {
             GuidedAction action = new GuidedAction.Builder(getActivity())
-                    .title("Complete")
-                    .description("You're all set!")
+                    .title(R.string.setup_complete_action_title)
+                    .description(R.string.setup_account_complete_body)
                     .editable(false)
                     .build();
 
@@ -439,8 +423,8 @@ public class AuthenticatorActivity extends AccountAuthenticatorActivity {
         @Override
         public GuidanceStylist.Guidance onCreateGuidance(Bundle savedInstanceState) {
             GuidanceStylist.Guidance guidance = new GuidanceStylist.Guidance(
-                    "Tvheadend Account",
-                    "Failed to add account",
+                    getString(R.string.account_name),
+                    getString(R.string.setup_complete_failed),
                     null,
                     null);
 
@@ -453,13 +437,13 @@ public class AuthenticatorActivity extends AccountAuthenticatorActivity {
 
             Bundle args = getArguments();
             String errorMessage = args.getString(Constants.KEY_ERROR_MESSAGE);
-            getGuidanceStylist().getDescriptionView().setText("Failed to add account: " + errorMessage);
+            getGuidanceStylist().getDescriptionView().setText(getString(R.string.account_failed_error, errorMessage));
         }
 
         @Override
         public void onCreateActions(@NonNull List<GuidedAction> actions, Bundle savedInstanceState) {
             GuidedAction action = new GuidedAction.Builder(getActivity())
-                    .title("Complete")
+                    .title(R.string.setup_complete_action_title)
                     .editable(false)
                     .build();
 

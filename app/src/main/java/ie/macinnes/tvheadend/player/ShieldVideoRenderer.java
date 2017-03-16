@@ -20,16 +20,22 @@ import android.content.Context;
 import android.media.MediaCodec;
 import android.media.MediaCrypto;
 import android.os.Handler;
+import android.util.Log;
 
 import com.google.android.exoplayer2.ExoPlaybackException;
 import com.google.android.exoplayer2.Format;
 import com.google.android.exoplayer2.drm.DrmSessionManager;
 import com.google.android.exoplayer2.drm.FrameworkMediaCrypto;
+import com.google.android.exoplayer2.mediacodec.MediaCodecInfo;
 import com.google.android.exoplayer2.mediacodec.MediaCodecSelector;
+import com.google.android.exoplayer2.mediacodec.MediaCodecUtil;
 import com.google.android.exoplayer2.video.MediaCodecVideoRenderer;
 import com.google.android.exoplayer2.video.VideoRendererEventListener;
 
 public class ShieldVideoRenderer extends MediaCodecVideoRenderer {
+    private static final String TAG = ShieldVideoRenderer.class.getName();
+    private static final int THIRTEEN_MINUTES = 13 * 60 * 1000;
+
     private long startTime;
     private boolean enabled;
 
@@ -38,8 +44,9 @@ public class ShieldVideoRenderer extends MediaCodecVideoRenderer {
     }
 
     @Override
-    protected void configureCodec(MediaCodec codec, Format format, MediaCrypto crypto) {
-        super.configureCodec(codec, format, crypto);
+    protected void configureCodec(
+            MediaCodecInfo codecInfo, MediaCodec codec, Format format, MediaCrypto crypto) throws MediaCodecUtil.DecoderQueryException {
+        super.configureCodec(codecInfo, codec, format, crypto);
 
         enabled = (format.height == 1080 || format.height == 576);
         startTime = System.currentTimeMillis();
@@ -50,7 +57,8 @@ public class ShieldVideoRenderer extends MediaCodecVideoRenderer {
         long currentTime = System.currentTimeMillis();
         long diffMs = currentTime - startTime;
 
-        if(enabled && diffMs > 13 * 60 * 1000) {
+        if(enabled && diffMs > THIRTEEN_MINUTES) {
+            Log.d(TAG, "Resetting codecs as nVidia Shield workaround");
             releaseCodec();
         }
 

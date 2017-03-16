@@ -24,12 +24,11 @@ import android.view.View;
 import android.widget.TextView;
 
 import org.acra.ACRA;
-import org.json.JSONObject;
 
 import ie.macinnes.tvheadend.account.AccountUtils;
-import ie.macinnes.tvheadend.migrate.MigrateUtils;
 import ie.macinnes.tvheadend.settings.SettingsActivity;
 import ie.macinnes.tvheadend.sync.EpgSyncService;
+import ie.macinnes.tvheadend.tvinput.TvInputService;
 
 public class DevTestActivity extends Activity {
     private static final String TAG = DevTestActivity.class.getName();
@@ -99,12 +98,6 @@ public class DevTestActivity extends Activity {
 
             String htspPort = mAccountManager.getUserData(account, Constants.KEY_HTSP_PORT);
             appendDebugOutput("Account HTSP Port: " + htspPort);
-
-            String httpPort = mAccountManager.getUserData(account, Constants.KEY_HTTP_PORT);
-            appendDebugOutput("Account HTTP Port: " + httpPort);
-
-            String httpPath = mAccountManager.getUserData(account, Constants.KEY_HTTP_PATH);
-            appendDebugOutput("Account HTTP Path: " + httpPath);
         }
 
         setOk();
@@ -112,6 +105,14 @@ public class DevTestActivity extends Activity {
 
     public void deleteChannels(View view) {
         setRunning();
+
+        Context context = getBaseContext();
+        Intent i = new Intent(context, EpgSyncService.class);
+        context.stopService(i);
+
+        i = new Intent(context, TvInputService.class);
+        context.stopService(i);
+
         TvContractUtils.removeChannels(getBaseContext());
         setOk();
     }
@@ -123,6 +124,13 @@ public class DevTestActivity extends Activity {
     public void restartEpgSyncService(View view) {
         Context context = getBaseContext();
         Intent i = new Intent(context, EpgSyncService.class);
+        context.stopService(i);
+        context.startService(i);
+    }
+
+    public void restartTvInputService(View view) {
+        Context context = getBaseContext();
+        Intent i = new Intent(context, TvInputService.class);
         context.stopService(i);
         context.startService(i);
     }

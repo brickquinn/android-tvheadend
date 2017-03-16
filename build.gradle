@@ -1,11 +1,12 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
+import org.ajoberstar.grgit.Grgit
 
 buildscript {
     repositories {
         jcenter()
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:2.2.3'
+        classpath 'com.android.tools.build:gradle:2.3.0'
         classpath 'com.google.gms:google-services:3.0.0'
         classpath 'org.ajoberstar:grgit:1.4.+'
 
@@ -19,6 +20,9 @@ allprojects {
         maven {
             url "http://dl.bintray.com/kiall/exoplayer"
         }
+        maven {
+            url "http://dl.bintray.com/kiall/htsp"
+        }
         jcenter()
     }
     project.ext {
@@ -26,6 +30,9 @@ allprojects {
         targetSdkVersion = 25
         minSdkVersion = 22
         buildToolsVersion = "25.0.2"
+
+        git = Grgit.open()
+        gitVersionName = "${git.describe()}"
     }
 }
 

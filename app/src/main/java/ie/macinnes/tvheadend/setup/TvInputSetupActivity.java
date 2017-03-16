@@ -21,9 +21,9 @@ import android.accounts.AccountManagerFuture;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.media.tv.TvInputInfo;
 import android.os.Bundle;
+import android.os.Handler;
 import android.support.annotation.NonNull;
 import android.support.v17.leanback.app.GuidedStepFragment;
 import android.support.v17.leanback.widget.GuidanceStylist;
@@ -34,6 +34,9 @@ import android.util.Log;
 import java.util.ArrayList;
 import java.util.List;
 
+import ie.macinnes.htsp.HtspConnection;
+import ie.macinnes.htsp.SimpleHtspConnection;
+import ie.macinnes.tvheadend.BuildConfig;
 import ie.macinnes.tvheadend.Constants;
 import ie.macinnes.tvheadend.MiscUtils;
 import ie.macinnes.tvheadend.R;
@@ -41,6 +44,7 @@ import ie.macinnes.tvheadend.TvContractUtils;
 import ie.macinnes.tvheadend.account.AccountUtils;
 import ie.macinnes.tvheadend.settings.SettingsActivity;
 import ie.macinnes.tvheadend.sync.EpgSyncService;
+import ie.macinnes.tvheadend.sync.EpgSyncTask;
 
 public class TvInputSetupActivity extends Activity {
     private static final String TAG = TvInputSetupActivity.class.getName();
@@ -101,14 +105,27 @@ public class TvInputSetupActivity extends Activity {
     }
 
     public static class IntroFragment extends BaseGuidedStepFragment {
+        @Override
+        public void onCreate(Bundle savedInstanceState) {
+            super.onCreate(savedInstanceState);
+
+            Context context = getActivity();
+
+            // Flag setup as incomplete
+            MiscUtils.setSetupComplete(context, false);
+
+            // Stop the EPG service
+            Intent intent = new Intent(context, EpgSyncService.class);
+            context.stopService(intent);
+        }
+
         @NonNull
         @Override
         public GuidanceStylist.Guidance onCreateGuidance(Bundle savedInstanceState) {
             GuidanceStylist.Guidance guidance = new GuidanceStylist.Guidance(
-                    "Introduction",
-                    "Welcome to the Tvhheadend Live Channel, we'll guide you through the setup " +
-                    "process now, once done you will be ready to watch TV",
-                    "TVHeadend",
+                    getString(R.string.setup_intro_title),
+                    getString(R.string.setup_intro_body),
+                    getString(R.string.account_label),
                     null);
 
             return guidance;
@@ -117,8 +134,8 @@ public class TvInputSetupActivity extends Activity {
         @Override
         public void onCreateActions(@NonNull List<GuidedAction> actions, Bundle savedInstanceState) {
             GuidedAction action = new GuidedAction.Builder(getActivity())
-                    .title("Begin")
-                    .description("Start Tvheadend Live Channel Setup")
+                    .title(R.string.setup_begin_title)
+                    .description(R.string.setup_begin_body)
                     .editable(false)
                     .build();
 
@@ -143,9 +160,9 @@ public class TvInputSetupActivity extends Activity {
         @Override
         public GuidanceStylist.Guidance onCreateGuidance(Bundle savedInstanceState) {
             GuidanceStylist.Guidance guidance = new GuidanceStylist.Guidance(
-                    "Select An Account",
-                    "Please choose an existing, or create a new TVHeadend account to use",
-                    "TVHeadend",
+                    getString(R.string.setup_account_title),
+                    getString(R.string.setup_account_body),
+                    getString(R.string.account_label),
                     null);
 
             return guidance;
@@ -157,9 +174,9 @@ public class TvInputSetupActivity extends Activity {
 
             GuidedAction action = new GuidedAction.Builder(getActivity())
                     .id(ACTION_ID_SELECT_ACCOUNT)
-                    .title("Account Selection")
+                    .title(R.string.setup_account_action_title)
                     .editTitle("")
-                    .description("Select Account")
+                    .description(R.string.setup_account_title)
                     .subActions(subActions)
                     .build();
 
@@ -167,8 +184,8 @@ public class TvInputSetupActivity extends Activity {
 
             action = new GuidedAction.Builder(getActivity())
                     .id(ACTION_ID_CONFIRM)
-                    .title("Confirm")
-                    .description("Confirm This Selection")
+                    .title(R.string.setup_confirm)
+                    .description(R.string.setup_confirm_body)
                     .editable(false)
                     .build();
             action.setEnabled(false);
@@ -199,7 +216,7 @@ public class TvInputSetupActivity extends Activity {
 
             accountSubActions.add(new GuidedAction.Builder(getActivity())
                     .id(ACTION_ID_NEW_ACCOUNT)
-                    .title("Add New Account")
+                    .title(R.string.setup_account_create)
                     .description("")
                     .editable(false)
                     .build()
@@ -245,125 +262,69 @@ public class TvInputSetupActivity extends Activity {
         public void onGuidedActionClicked(GuidedAction action) {
             if (ACTION_ID_CONFIRM == action.getId()) {
                 // Move onto the next step
-                GuidedStepFragment fragment = new SessionSelectorFragment();
+                GuidedStepFragment fragment = new SyncingFragment();
                 fragment.setArguments(getArguments());
                 add(getFragmentManager(), fragment);
             }
         }
     }
 
-    public static class SessionSelectorFragment extends BaseGuidedStepFragment {
-        private static final int ACTION_ID_MEDIA_PLAYER = 1;
-        private static final int ACTION_ID_EXO_PLAYER = 2;
-        private static final int ACTION_ID_VLC = 3;
+    public static class SyncingFragment extends BaseGuidedStepFragment implements EpgSyncTask.Listener {
+        protected SimpleHtspConnection mConnection;
+        protected EpgSyncTask mEpgSyncTask;
 
-        @NonNull
         @Override
-        public GuidanceStylist.Guidance onCreateGuidance(Bundle savedInstanceState) {
-            GuidanceStylist.Guidance guidance = new GuidanceStylist.Guidance(
-                    "Session Selector",
-                    "There are several Session implementatioms, please choose one",
-                    "TVHeadend",
-                    null);
-
-            return guidance;
+        public Handler getHandler() {
+            return new Handler(getActivity().getMainLooper());
         }
 
         @Override
-        public void onCreateActions(@NonNull List<GuidedAction> actions, Bundle savedInstanceState) {
-            GuidedAction action = new GuidedAction.Builder(getActivity())
-                    .id(ACTION_ID_VLC)
-                    .title("LibVLC")
-                    .description("VideoLAN LibVLC (Recommended)")
-                    .editable(false)
-                    .build();
+        public void onInitialSyncCompleted() {
+            Log.d(TAG, "Initial Sync Completed");
 
-            actions.add(action);
-
-            action = new GuidedAction.Builder(getActivity())
-                    .id(ACTION_ID_MEDIA_PLAYER)
-                    .title("Media Player")
-                    .description("Android Media Player")
-                    .editable(false)
-                    .build();
-
-            actions.add(action);
-
-            action = new GuidedAction.Builder(getActivity())
-                    .id(ACTION_ID_EXO_PLAYER)
-                    .title("ExoPlayer")
-                    .description("Google ExoPlayer (Experimental)")
-                    .editable(false)
-                    .build();
-
-            actions.add(action);
-        }
-
-        @Override
-        public void onGuidedActionClicked(GuidedAction action) {
-            String session;
-
-            if (action.getId() == ACTION_ID_MEDIA_PLAYER) {
-                session = Constants.SESSION_MEDIA_PLAYER;
-            } else if (action.getId() == ACTION_ID_EXO_PLAYER) {
-                session = Constants.SESSION_EXO_PLAYER;
-            } else if (action.getId() == ACTION_ID_VLC) {
-                session = Constants.SESSION_VLC;
-            } else {
-                return;
-            }
-
-            // Store the chosen session type
-            SharedPreferences sharedPreferences = getActivity().getSharedPreferences(
-                    Constants.PREFERENCE_TVHEADEND, Context.MODE_PRIVATE);
-
-            SharedPreferences.Editor editor = sharedPreferences.edit();
-            editor.putString(Constants.KEY_SESSION, session);
-            editor.apply();
-
-            // Move onto the next step
-            GuidedStepFragment fragment = new SyncingFragment();
+            // Move to the CompletedFragment
+            GuidedStepFragment fragment = new CompletedFragment();
             fragment.setArguments(getArguments());
             add(getFragmentManager(), fragment);
-        }
-    }
-
-    public static class SyncingFragment extends BaseGuidedStepFragment {
-
-        protected Runnable mInitialSyncCompleteCallback = new Runnable() {
-            @Override
-            public void run() {
-                Log.d(TAG, "Initial Sync Completed");
-
-                // Move to the CompletedFragment
-                GuidedStepFragment fragment = new CompletedFragment();
-                fragment.setArguments(getArguments());
-                add(getFragmentManager(), fragment);
-            }
-        };
-
-        @Override
-        public void onCreate(Bundle savedInstanceState) {
-            super.onCreate(savedInstanceState);
-
-            EpgSyncService.addInitialSyncCompleteCallback(mInitialSyncCompleteCallback);
-        }
-
-        @Override
-        public void onDestroy() {
-            super.onDestroy();
-
-            EpgSyncService.removeInitialSyncCompleteCallback(mInitialSyncCompleteCallback);
         }
 
         @Override
         public void onStart() {
             super.onStart();
 
-            // Start EPG sync service
-            Context context = getActivity().getBaseContext();
-            context.stopService(new Intent(context, EpgSyncService.class));
-            context.startService(new Intent(context, EpgSyncService.class));
+            Account account = AccountUtils.getActiveAccount(getActivity().getBaseContext());
+
+            final String hostname = mAccountManager.getUserData(account, Constants.KEY_HOSTNAME);
+            final int port = Integer.parseInt(mAccountManager.getUserData(account, Constants.KEY_HTSP_PORT));
+            final String username = account.name;
+            final String password = mAccountManager.getPassword(account);
+
+            HtspConnection.ConnectionDetails connectionDetails = new HtspConnection.ConnectionDetails(
+                    hostname, port, username, password, "android-tvheadend (Setup EPG)",
+                    BuildConfig.VERSION_NAME);
+
+            mConnection = new SimpleHtspConnection(connectionDetails);
+
+            mEpgSyncTask = new EpgSyncTask(getActivity().getBaseContext(), mConnection, true);
+            mEpgSyncTask.addEpgSyncListener(this);
+
+            mConnection.addMessageListener(mEpgSyncTask);
+            mConnection.addAuthenticationListener(mEpgSyncTask);
+
+            mConnection.start();
+        }
+
+        @Override
+        public void onStop() {
+            mConnection.stop();
+            mConnection.removeMessageListener(mEpgSyncTask);
+            mConnection.removeAuthenticationListener(mEpgSyncTask);
+            mConnection = null;
+
+            mEpgSyncTask.removeEpgSyncListener(this);
+            mEpgSyncTask = null;
+
+            super.onStop();
         }
 
         @Override
@@ -387,9 +348,9 @@ public class TvInputSetupActivity extends Activity {
         @Override
         public GuidanceStylist.Guidance onCreateGuidance(Bundle savedInstanceState) {
             GuidanceStylist.Guidance guidance = new GuidanceStylist.Guidance(
-                    "Syncing Channels and Program data",
-                    "Just a few seconds please :)",
-                    "TVHeadend",
+                    getString(R.string.setup_sync_title),
+                    getString(R.string.setup_sync_body),
+                    getString(R.string.account_label),
                     null);
 
             return guidance;
@@ -398,7 +359,7 @@ public class TvInputSetupActivity extends Activity {
         @Override
         public void onCreateActions(@NonNull List<GuidedAction> actions, Bundle savedInstanceState) {
             GuidedAction action = new GuidedAction.Builder(getActivity())
-                    .title("Processing")
+                    .title(R.string.setup_progress_body)
                     .infoOnly(true)
                     .build();
             actions.add(action);
@@ -413,9 +374,9 @@ public class TvInputSetupActivity extends Activity {
         @Override
         public GuidanceStylist.Guidance onCreateGuidance(Bundle savedInstanceState) {
             GuidanceStylist.Guidance guidance = new GuidanceStylist.Guidance(
-                    "Setup Complete",
-                    "Enjoy!",
-                    "TVHeadend",
+                    getString(R.string.setup_complete_title),
+                    getString(R.string.setup_complete_body),
+                    getString(R.string.account_label),
                     null);
 
             return guidance;
@@ -425,8 +386,8 @@ public class TvInputSetupActivity extends Activity {
         public void onCreateActions(@NonNull List<GuidedAction> actions, Bundle savedInstanceState) {
             GuidedAction action = new GuidedAction.Builder(getActivity())
                     .id(ACTION_ID_SETTINGS)
-                    .title("Settings")
-                    .description("Advanced Settings")
+                    .title(R.string.setup_settings_title)
+                    .description(R.string.setup_settings_body)
                     .editable(false)
                     .build();
 
@@ -434,8 +395,8 @@ public class TvInputSetupActivity extends Activity {
 
             action = new GuidedAction.Builder(getActivity())
                     .id(ACTION_ID_COMPLETE)
-                    .title("Complete")
-                    .description("You're all set!")
+                    .title(R.string.setup_complete_action_title)
+                    .description(R.string.setup_account_complete_body)
                     .editable(false)
                     .build();
 
@@ -447,7 +408,14 @@ public class TvInputSetupActivity extends Activity {
             if (action.getId() == ACTION_ID_SETTINGS) {
                 startActivity(SettingsActivity.getPreferencesIntent(getActivity()));
             } else if (action.getId() == ACTION_ID_COMPLETE) {
+                // Store the Setup Complete preference
                 MiscUtils.setSetupComplete(getActivity(), true);
+
+                // Start the EPG sync service
+                Intent intent = new Intent(getActivity(), EpgSyncService.class);
+                getActivity().startService(intent);
+
+                // Wrap up setup
                 getActivity().setResult(Activity.RESULT_OK);
                 getActivity().finish();
             }

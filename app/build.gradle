@@ -1,11 +1,4 @@
-import org.ajoberstar.grgit.Grgit
-
 apply plugin: 'com.android.application'
-
-ext {
-    git = Grgit.open()
-    gitVersionName = "${git.describe()}"
-}
 
 android {
     compileSdkVersion project.ext.compileSdkVersion
@@ -15,9 +8,11 @@ android {
         applicationId "ie.macinnes.tvheadend"
         minSdkVersion project.ext.minSdkVersion
         targetSdkVersion project.ext.targetSdkVersion
+
         versionCode System.getenv("APP_VERSION_CODE") as Integer ?: 0
-        versionName gitVersionName
-        setProperty("archivesBaseName", "${applicationId}_${versionName}")
+        versionName project.ext.gitVersionName
+
+        setProperty("archivesBaseName", applicationId)
 
         buildConfigField "boolean", "ACRA_ENABLED", "false"
         buildConfigField "String", "ACRA_REPORT_URI", "\"\""
@@ -73,14 +68,24 @@ repositories {
 }
 
 dependencies {
+    compile 'ie.macinnes.htsp:android-htsp:v0.0.1a17'
+    // Used for testing local HTSP lib builds
+//    compile(name: 'library-debug', ext: 'aar')
     compile fileTree(include: ['*.jar'], dir: 'libs')
-    // compile(name: 'vlc-android-sdk-release', ext: 'aar') // Used for testing local libvlc builds
-    compile project(':htsp')
-    compile 'com.android.support:support-v4:25.1.0'
-    compile 'com.android.support:leanback-v17:25.1.0'
-    compile 'com.android.support:preference-leanback-v17:25.1.0'
-    compile 'com.google.android.exoplayer:exoplayer:r2.1.1k2'
-    compile 'com.google.android.exoplayer:extension-ffmpeg:r2.1.1k2'
-    compile 'de.mrmaffen:vlc-android-sdk:1.9.8'
-    compile 'ch.acra:acra:4.9.1'
+    // Used for testing local libvlc builds
+//    compile(name: 'vlc-android-sdk-release', ext: 'aar')
+    compile 'com.android.support:support-v4:25.2.0'
+    compile 'com.android.support:leanback-v17:25.2.0'
+    compile 'com.android.support:preference-leanback-v17:25.2.0'
+    compile 'com.google.android.exoplayer:exoplayer:r2.2.0k1'
+    compile 'com.google.android.exoplayer:extension-ffmpeg:r2.2.0k1'
+    // Used for testing local exoplayer builds
+//    compile(name: 'library-release', ext: 'aar')
+    // Used for testing local exoplayer-ffmpeg builds
+//    compile(name: 'extension-ffmpeg-release', ext: 'aar')
+    compile 'ch.acra:acra:4.9.2'
+
+    debugCompile 'com.squareup.leakcanary:leakcanary-android:1.5'
+    releaseCompile 'com.squareup.leakcanary:leakcanary-android-no-op:1.5'
+    testCompile 'com.squareup.leakcanary:leakcanary-android-no-op:1.5'
 }

@@ -19,6 +19,9 @@ package ie.macinnes.tvheadend;
 import android.content.Context;
 import android.util.Log;
 
+import com.squareup.leakcanary.LeakCanary;
+import com.squareup.leakcanary.RefWatcher;
+
 import org.acra.ACRA;
 import org.acra.config.ACRAConfiguration;
 import org.acra.config.ACRAConfigurationException;
@@ -29,6 +32,22 @@ import ie.macinnes.tvheadend.migrate.MigrateUtils;
 
 public class Application extends android.app.Application {
     private static final String TAG = Application.class.getName();
+
+    private RefWatcher mRefWatcher;
+
+    public static RefWatcher getRefWatcher(Context context) {
+        Application application = (Application) context.getApplicationContext();
+        return application.mRefWatcher;
+    }
+
+    @Override
+    public void onCreate() {
+        super.onCreate();
+
+        if (!LeakCanary.isInAnalyzerProcess(this)) {
+            mRefWatcher = LeakCanary.install(this);
+        }
+    }
 
     @Override
     protected void attachBaseContext(Context base) {
@@ -42,7 +61,7 @@ public class Application extends android.app.Application {
                         .setHttpMethod(HttpSender.Method.PUT)
                         .setReportType(HttpSender.Type.JSON)
                         .setFormUri(BuildConfig.ACRA_REPORT_URI + "/" + BuildConfig.VERSION_CODE)
-                        .setLogcatArguments("-t", "500", "-v", "time", "*:I")
+                        .setLogcatArguments("-t", "1000", "-v", "time", "*:D")
                         .setAdditionalSharedPreferences(Constants.PREFERENCE_TVHEADEND)
                         .setSharedPreferenceName(Constants.PREFERENCE_TVHEADEND)
                         .setSharedPreferenceMode(Context.MODE_PRIVATE)
